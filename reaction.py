@@ -23,14 +23,11 @@ class TelegramReactionEngine:
     async def _verify_and_react(self, token: str, message_id: int, emoji: str, attempt: int = 1) -> bool:
         try:
             async with Bot(token=token) as bot:
-                # पहले चेक करेंगे कि बॉट चैनल तक पहुँच पा रहा है या नहीं
                 try:
                     await bot.get_chat(chat_id=self.channel_id)
                 except TelegramError:
-                    logger.warning(f"Bot ending in ...{token[-6:]} cannot access the channel (Chat not found / Not a member). Skipping this bot.")
                     return False
 
-                # अगर बॉट चैनल में है, तब रिएक्शन भेजेंगे
                 await bot.set_message_reaction(
                     chat_id=self.channel_id,
                     message_id=message_id,
@@ -42,25 +39,26 @@ class TelegramReactionEngine:
 
         except RetryAfter as e:
             wait_time = float(e.retry_after) + random.uniform(0.5, 1.5)
-            logger.warning(f"Flood limit hit for token ending in ...{token[-6:]}. Sleeping for {wait_time:.2f} seconds.")
             await asyncio.sleep(wait_time)
             if attempt < 3:
                 return await self._verify_and_react(token, message_id, emoji, attempt + 1)
-        except (NetworkError, TimeoutError, asyncio.TimeoutError) as net_err:
-            logger.warning(f"Network glitch encountered for token ...{token[-6:]}: {net_err}. Retrying...")
+        except TelegramError as tg_err:
+            # अगर टेलीग्राम ज़्यादा रिएक्शन की वजह से रोके, तो थोड़ा इंतज़ार करके आगे बढ़ें
+            if "too_many" in str(tg_err).lower() or "flood" in str(tg_err).lower():
+                await asyncio.sleep(random.uniform(3.0, 6.0))
+                if attempt < 3:
+                    return await self._verify_and_react(token, message_id, emoji, attempt + 1)
+        except (NetworkError, TimeoutError, asyncio.TimeoutError):
             if attempt < 3:
                 await asyncio.sleep(2 ** attempt + random.uniform(0.5, 1.5))
                 return await self._verify_and_react(token, message_id, emoji, attempt + 1)
-        except TelegramError as tg_err:
-            logger.error(f"Telegram API restriction for token ...{token[-6:]}: {tg_err}")
-        except Exception as ex:
-            logger.error(f"Unexpected runtime exception for token ...{token[-6:]}: {ex}")
+        except Exception:
+            pass
         
         return False
 
     async def execute_reaction_campaign(self, message_id: int) -> None:
         if not self.bot_tokens:
-            logger.error("Critical Error: Bot token pool is empty. Please provide valid tokens.")
             return
 
         tokens = list(self.bot_tokens)
@@ -134,3 +132,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Campaign manually terminated by operator.")
+        
