@@ -10,7 +10,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
     level=logging.WARNING,
 )
-logger = logging.getLogger("CustomMixedReactionBot")
+logger = logging.getLogger("Fixed29BotsReactionBot")
 
 app = Flask(__name__)
 
@@ -65,32 +65,29 @@ async def trigger_all_reactions(message_id: int):
     tokens = list(MASTER_BOT_TOKENS)
     random.shuffle(tokens)
     
-    target_hearts = random.randint(10, 12)
-    target_others = random.randint(7, 9)
-    total_target = target_hearts + target_others
+    total_bots = len(tokens) # अब पूरे 29 बॉट्स लिए जाएंगे
+    target_hearts = random.randint(13, 16) # हार्ट्स की संख्या
     
-    # आपके बताए गए नए इमोजी यहाँ जोड़ दिए गए हैं
     other_emojis = ["👻", "❤️‍🔥", "💐", "☠️", "👀", "👍", "🔥", "😍", "👏", "🎉", "🤩", "🏆", "🍾"]
 
+    # सूची को सीधे 29 बॉट्स की कुल संख्या के बराबर बनाया गया है
     emoji_list = ["❤️"] * target_hearts
-    while len(emoji_list) < total_target:
+    while len(emoji_list) < total_bots:
         emoji_list.append(random.choice(other_emojis))
     
     random.shuffle(emoji_list)
 
     for i, emoji in enumerate(emoji_list):
-        if i >= len(tokens):
-            break
-        
         token = tokens[i]
         await _safe_react(token, message_id, emoji)
         
-        delay = random.uniform(3.0, 4.0)
+        # सभी 29 बॉट्स के लिए सुरक्षित गैप
+        delay = random.uniform(2.5, 3.5)
         await asyncio.sleep(delay)
 
 @app.route('/')
 def home():
-    return "Custom Mixed Reaction Bot is Running!"
+    return "Fixed 29-Bot Reaction Bot is Running!"
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
