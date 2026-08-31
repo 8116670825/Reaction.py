@@ -20,9 +20,17 @@ class TelegramReactionEngine:
             "👍", "🔥", "❤️", "❤️", "👏", "🎉", "❤️", "😍", "🤩", "❤️"
         ]
 
-    async def _dispatch_single(self, token: str, message_id: int, emoji: str, attempt: int = 1) -> bool:
+    async def _verify_and_react(self, token: str, message_id: int, emoji: str, attempt: int = 1) -> bool:
         try:
             async with Bot(token=token) as bot:
+                # पहले चेक करेंगे कि बॉट चैनल तक पहुँच पा रहा है या नहीं
+                try:
+                    await bot.get_chat(chat_id=self.channel_id)
+                except TelegramError:
+                    logger.warning(f"Bot ending in ...{token[-6:]} cannot access the channel (Chat not found / Not a member). Skipping this bot.")
+                    return False
+
+                # अगर बॉट चैनल में है, तब रिएक्शन भेजेंगे
                 await bot.set_message_reaction(
                     chat_id=self.channel_id,
                     message_id=message_id,
@@ -31,17 +39,18 @@ class TelegramReactionEngine:
                 )
                 logger.info(f"Successfully deployed [{emoji}] using Bot Token ending in ...{token[-6:]}")
                 return True
+
         except RetryAfter as e:
             wait_time = float(e.retry_after) + random.uniform(0.5, 1.5)
             logger.warning(f"Flood limit hit for token ending in ...{token[-6:]}. Sleeping for {wait_time:.2f} seconds.")
             await asyncio.sleep(wait_time)
-            if attempt < 4:
-                return await self._dispatch_single(token, message_id, emoji, attempt + 1)
+            if attempt < 3:
+                return await self._verify_and_react(token, message_id, emoji, attempt + 1)
         except (NetworkError, TimeoutError, asyncio.TimeoutError) as net_err:
             logger.warning(f"Network glitch encountered for token ...{token[-6:]}: {net_err}. Retrying...")
-            if attempt < 4:
+            if attempt < 3:
                 await asyncio.sleep(2 ** attempt + random.uniform(0.5, 1.5))
-                return await self._dispatch_single(token, message_id, emoji, attempt + 1)
+                return await self._verify_and_react(token, message_id, emoji, attempt + 1)
         except TelegramError as tg_err:
             logger.error(f"Telegram API restriction for token ...{token[-6:]}: {tg_err}")
         except Exception as ex:
@@ -57,28 +66,25 @@ class TelegramReactionEngine:
         tokens = list(self.bot_tokens)
         random.shuffle(tokens)
         total_bots = len(tokens)
-        logger.info(f"Initializing timed campaign for Message ID: {message_id} with {total_bots} bot nodes.")
+        logger.info(f"Initializing 4-minute timed campaign for Message ID: {message_id} with {total_bots} bot nodes.")
 
-        # पहले 2 मिनट में 20 रिएक्शन भेजने के लिए समय सेट करना (120 सेकंड / 20 = 6 सेकंड प्रति बॉट)
         fast_phase_limit = min(20, total_bots)
 
         for index, token in enumerate(tokens):
             emoji = random.choice(self.emoji_pool)
-            await self._dispatch_single(token, message_id, emoji)
+            await self._verify_and_react(token, message_id, emoji)
 
             if index == total_bots - 1:
                 break
 
-            # टाइमिंग लॉजिक: पहले 20 बॉट्स के लिए तेज़ स्पीड, बाकी के लिए बचा हुआ समय
             if index < fast_phase_limit:
-                delay = random.uniform(5.0, 6.5)  # पहले 2 मिनट में लगभग 20 पूरे करने के लिए
+                delay = random.uniform(5.0, 6.5)  # पहले 2 मिनट में 20 रिएक्शन के लिए
             else:
-                delay = random.uniform(12.0, 18.0) # बाकी के बचे हुए रिएक्शन अगले 2 मिनट में बांटने के लिए
+                delay = random.uniform(12.0, 18.0) # बाकी के 2 मिनट के लिए
 
-            logger.debug(f"Pacing delay active: sleeping for {delay:.2f} seconds.")
             await asyncio.sleep(delay)
 
-        logger.info("Reaction campaign successfully completed across all bot nodes.")
+        logger.info("Reaction campaign successfully completed across all active bot nodes.")
 
 async def main():
     MASTER_BOT_TOKENS = [
@@ -128,4 +134,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Campaign manually terminated by operator.")
-
