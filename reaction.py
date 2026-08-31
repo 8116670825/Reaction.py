@@ -1,3 +1,6 @@
+अब मैं आपकी बात पूरी तरह समझ गया हूँ। आप यह चाहते हैं कि बोट्स एक ही बार में लगातार सारे हार्ट न भेज दें, बल्कि रिएक्शन एक-एक करके क्रम में आएं, और यह सिलसिला तब तक चलता रहे जब तक आपके तय किए गए सारे रिएक्शन पूरे नहीं हो जाते।
+इसके साथ ही, हार्ट (❤️) की संख्या सबसे ज्यादा (13 से 15 के बीच) रहेगी और बाकी बचे हुए रिएक्शन दूसरे मिक्स्ड इमोजी के रूप में आएंगे, जो 3 से 4 सेकंड के गैप पर धीरे-धीरे एक-एक करके गिरेंगे।
+इस परफेक्ट लॉजिक के साथ आपका अपडेटेड कोड यह रहा:
 import asyncio
 import logging
 import random
@@ -11,7 +14,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
     level=logging.WARNING,
 )
-logger = logging.getLogger("TimedAutoReactionBot")
+logger = logging.getLogger("SequentialMixedAutoReactionBot")
 
 app = Flask(__name__)
 
@@ -66,39 +69,37 @@ async def trigger_all_reactions(message_id: int):
     tokens = list(MASTER_BOT_TOKENS)
     random.shuffle(tokens)
     
-    # हार्ट रिएक्शन की संख्या 13 से 15 के बीच तय की गई है
-    target_heart_count = random.randint(13, 15)
-    total_reactions = target_heart_count + 2  # कुल रिएक्शन थोड़े ज़्यादा ताकि मिक्स इमोजी भी आ सकें
+    # टारगेट हार्ट्स: 13 से 15 के बीच
+    target_hearts = random.randint(13, 15)
+    # कुल मिक्स रिएक्शन (हार्ट्स + कुछ अन्य इमोजी ताकि कुल संख्या लगभग 17-19 हो)
+    total_target = target_hearts + random.randint(3, 5)
     
     other_emojis = ["👍", "🔥", "😍", "👏", "🎉", "🤩", "🏆", "🍾", "👻", "👀"]
 
-    print(f"--> Auto Triggered! Message ID: {message_id}. Sending ~{target_heart_count} hearts within time limit...")
-
-    active_count = 0
-    heart_sent = 0
+    # पहले से ही तय कर लेंगे कि कौन सा इमोजी किस नंबर पर जाएगा और उसे आपस में मिला (shuffle) देंगे
+    emoji_list = ["❤️"] * target_hearts
+    while len(emoji_list) < total_target:
+        emoji_list.append(random.choice(other_emojis))
     
-    for token in tokens:
-        if active_count >= total_reactions:
+    # इसे रैंडम शफल कर देंगे ताकि हार्ट और दूसरे इमोजी बीच-बीच में एक-एक करके आएं, लगातार सारे हार्ट न आएं
+    random.shuffle(emoji_list)
+
+    print(f"--> Auto Triggered! Message ID: {message_id}. Sending {len(emoji_list)} reactions sequentially with mix.")
+
+    for i, emoji in enumerate(emoji_list):
+        if i >= len(tokens):
             break
-
-        # पहले 13 से 15 तक सिर्फ हार्ट (❤️) भेजेगा, उसके बाद मिक्स्ड इमोजी
-        if heart_sent < target_heart_count:
-            emoji = "❤️"
-            heart_sent += 1
-        else:
-            emoji = random.choice(other_emojis)
         
-        success = await _safe_react(token, message_id, emoji)
-        if success:
-            active_count += 1
+        token = tokens[i]
+        await _safe_react(token, message_id, emoji)
 
-        # हर रिएक्शन के बीच 10 से 15 सेकंड का अंतराल
-        delay = random.uniform(10.0, 15.0)
+        # हर एक रिएक्शन के बीच 3 से 4 सेकंड का गैप ताकि एक-एक करके आराम से आएं
+        delay = random.uniform(3.0, 4.0)
         await asyncio.sleep(delay)
 
 @app.route('/')
 def home():
-    return "Timed Auto-Reaction Bot (13-15 Hearts) is Running 24/7!"
+    return "Sequential Mixed Auto-Reaction Bot is Running 24/7!"
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
@@ -108,6 +109,10 @@ def telegram_webhook():
         if post:
             chat = post.get("chat", {})
             if chat.get("id") == PRIVATE_CHANNEL_ID or chat.get("id") == str(PRIVATE_CHANNEL_ID):
+                
+                if "video_chat_started" in post or "video_chat_ended" in post or "video_chat_participants_invited" in post:
+                    return "OK", 200
+
                 msg_id = post.get("message_id")
                 if msg_id:
                     asyncio.run_coroutine_threadsafe(trigger_all_reactions(msg_id), loop)
@@ -134,7 +139,7 @@ async def main():
     flask_thread.daemon = True
     flask_thread.start()
 
-    print("Bot is up and listening with 13-15 heart constraints...")
+    print("Bot is up and listening with sequential mixed reactions...")
     
     await application.initialize()
     await application.start()
@@ -144,4 +149,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+
