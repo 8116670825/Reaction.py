@@ -10,7 +10,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
     level=logging.WARNING,
 )
-logger = logging.getLogger("SequentialMixedAutoReactionBot")
+logger = logging.getLogger("CustomMixedReactionBot")
 
 app = Flask(__name__)
 
@@ -65,10 +65,12 @@ async def trigger_all_reactions(message_id: int):
     tokens = list(MASTER_BOT_TOKENS)
     random.shuffle(tokens)
     
-    target_hearts = random.randint(13, 15)
-    total_target = target_hearts + random.randint(3, 5)
+    target_hearts = random.randint(10, 12)
+    target_others = random.randint(7, 9)
+    total_target = target_hearts + target_others
     
-    other_emojis = ["👍", "🔥", "😍", "👏", "🎉", "🤩", "🏆", "🍾", "👻", "👀"]
+    # आपके बताए गए नए इमोजी यहाँ जोड़ दिए गए हैं
+    other_emojis = ["👻", "❤️‍🔥", "💐", "☠️", "👀", "👍", "🔥", "😍", "👏", "🎉", "🤩", "🏆", "🍾"]
 
     emoji_list = ["❤️"] * target_hearts
     while len(emoji_list) < total_target:
@@ -82,12 +84,13 @@ async def trigger_all_reactions(message_id: int):
         
         token = tokens[i]
         await _safe_react(token, message_id, emoji)
+        
         delay = random.uniform(3.0, 4.0)
         await asyncio.sleep(delay)
 
 @app.route('/')
 def home():
-    return "Bot is Running!"
+    return "Custom Mixed Reaction Bot is Running!"
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
