@@ -3,11 +3,10 @@ import logging
 import random
 from typing import List, Union
 from telegram import Bot, ReactionTypeEmoji
-from telegram.error import TelegramError, RetryAfter, NetworkError
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
-    level=logging.INFO,
+    level=logging.WARNING,
 )
 logger = logging.getLogger("UltraProMaxReactionEngine")
 
@@ -20,42 +19,23 @@ class TelegramReactionEngine:
             "👍", "🔥", "❤️", "❤️", "👏", "🎉", "❤️", "😍", "🤩", "❤️"
         ]
 
-    async def _verify_and_react(self, token: str, message_id: int, emoji: str, attempt: int = 1) -> bool:
+    async def _safe_react(self, token: str, message_id: int, emoji: str, attempt: int = 1) -> bool:
         try:
             async with Bot(token=token) as bot:
-                try:
-                    await bot.get_chat(chat_id=self.channel_id)
-                except TelegramError:
-                    return False
-
                 await bot.set_message_reaction(
                     chat_id=self.channel_id,
                     message_id=message_id,
                     reaction=[ReactionTypeEmoji(emoji)],
                     is_big=False
                 )
-                logger.info(f"Successfully deployed [{emoji}] using Bot Token ending in ...{token[-6:]}")
                 return True
-
-        except RetryAfter as e:
-            wait_time = float(e.retry_after) + random.uniform(0.5, 1.5)
-            await asyncio.sleep(wait_time)
-            if attempt < 3:
-                return await self._verify_and_react(token, message_id, emoji, attempt + 1)
-        except TelegramError as tg_err:
-            # अगर टेलीग्राम ज़्यादा रिएक्शन की वजह से रोके, तो थोड़ा इंतज़ार करके आगे बढ़ें
-            if "too_many" in str(tg_err).lower() or "flood" in str(tg_err).lower():
-                await asyncio.sleep(random.uniform(3.0, 6.0))
+        except Exception as e:
+            # अगर कोई फ्लड या लिमिट एरर आए तो थोड़ा रुककर दोबारा कोशिश करें
+            if "flood" in str(e).lower() or "too_many" in str(e).lower():
                 if attempt < 3:
-                    return await self._verify_and_react(token, message_id, emoji, attempt + 1)
-        except (NetworkError, TimeoutError, asyncio.TimeoutError):
-            if attempt < 3:
-                await asyncio.sleep(2 ** attempt + random.uniform(0.5, 1.5))
-                return await self._verify_and_react(token, message_id, emoji, attempt + 1)
-        except Exception:
-            pass
-        
-        return False
+                    await asyncio.sleep(random.uniform(2.0, 4.0))
+                    return await self._safe_react(token, message_id, emoji, attempt + 1)
+            return False
 
     async def execute_reaction_campaign(self, message_id: int) -> None:
         if not self.bot_tokens:
@@ -64,25 +44,24 @@ class TelegramReactionEngine:
         tokens = list(self.bot_tokens)
         random.shuffle(tokens)
         total_bots = len(tokens)
-        logger.info(f"Initializing 4-minute timed campaign for Message ID: {message_id} with {total_bots} bot nodes.")
-
+        
+        # पहले 2 मिनट (120 सेकंड) में 20 रिएक्शन पूरे करने के लिए गति सेट की गई है
         fast_phase_limit = min(20, total_bots)
 
         for index, token in enumerate(tokens):
             emoji = random.choice(self.emoji_pool)
-            await self._verify_and_react(token, message_id, emoji)
+            await self._safe_react(token, message_id, emoji)
 
             if index == total_bots - 1:
                 break
 
+            # टाइमिंग: पहले 20 के लिए तेज़, बाद के लिए धीमा (कुल 4 मिनट का प्रोसेस)
             if index < fast_phase_limit:
-                delay = random.uniform(5.0, 6.5)  # पहले 2 मिनट में 20 रिएक्शन के लिए
+                delay = random.uniform(5.0, 6.5)
             else:
-                delay = random.uniform(12.0, 18.0) # बाकी के 2 मिनट के लिए
+                delay = random.uniform(12.0, 18.0)
 
             await asyncio.sleep(delay)
-
-        logger.info("Reaction campaign successfully completed across all active bot nodes.")
 
 async def main():
     MASTER_BOT_TOKENS = [
@@ -128,8 +107,5 @@ async def main():
     await engine.execute_reaction_campaign(message_id=TARGET_MESSAGE_ID)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Campaign manually terminated by operator.")
+    asyncio.run(main())
         
