@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 from typing import List, Union
-from telegram import Bot
+from telegram import Bot, ReactionTypeEmoji
 from telegram.error import TelegramError, RetryAfter, NetworkError
 
 logging.basicConfig(
@@ -12,11 +12,6 @@ logging.basicConfig(
 logger = logging.getLogger("UltraProMaxReactionEngine")
 
 class TelegramReactionEngine:
-    """
-    Ultra-Pro-Max Asynchronous Telegram Reaction Dispatcher.
-    Hardened against network drops, FloodWait exceptions, API timeouts, and concurrency bottlenecks.
-    """
-
     def __init__(self, bot_tokens: List[str], channel_id: Union[int, str]):
         self.bot_tokens = bot_tokens
         self.channel_id = channel_id
@@ -31,7 +26,7 @@ class TelegramReactionEngine:
                 await bot.set_message_reaction(
                     chat_id=self.channel_id,
                     message_id=message_id,
-                    reaction=emoji,
+                    reaction=[ReactionTypeEmoji(emoji)],
                     is_big=False
                 )
                 logger.info(f"Successfully deployed [{emoji}] using Bot Token ending in ...{token[-6:]}")
@@ -62,7 +57,10 @@ class TelegramReactionEngine:
         tokens = list(self.bot_tokens)
         random.shuffle(tokens)
         total_bots = len(tokens)
-        logger.info(f"Initializing elite campaign for Message ID: {message_id} with {total_bots} bot nodes.")
+        logger.info(f"Initializing timed campaign for Message ID: {message_id} with {total_bots} bot nodes.")
+
+        # पहले 2 मिनट में 20 रिएक्शन भेजने के लिए समय सेट करना (120 सेकंड / 20 = 6 सेकंड प्रति बॉट)
+        fast_phase_limit = min(20, total_bots)
 
         for index, token in enumerate(tokens):
             emoji = random.choice(self.emoji_pool)
@@ -71,21 +69,16 @@ class TelegramReactionEngine:
             if index == total_bots - 1:
                 break
 
-            delay = self._calculate_natural_delay(index, total_bots)
+            # टाइमिंग लॉजिक: पहले 20 बॉट्स के लिए तेज़ स्पीड, बाकी के लिए बचा हुआ समय
+            if index < fast_phase_limit:
+                delay = random.uniform(5.0, 6.5)  # पहले 2 मिनट में लगभग 20 पूरे करने के लिए
+            else:
+                delay = random.uniform(12.0, 18.0) # बाकी के बचे हुए रिएक्शन अगले 2 मिनट में बांटने के लिए
+
             logger.debug(f"Pacing delay active: sleeping for {delay:.2f} seconds.")
             await asyncio.sleep(delay)
 
         logger.info("Reaction campaign successfully completed across all bot nodes.")
-
-    def _calculate_natural_delay(self, current_index: int, total_bots: int) -> float:
-        if current_index == 0:
-            return random.uniform(0.3, 0.9)
-        elif current_index < 5:
-            return random.uniform(0.8, 1.5)
-        elif current_index < int(total_bots * 0.4):
-            return random.uniform(3.0, 5.0)
-        else:
-            return random.uniform(7.0, 10.5)
 
 async def main():
     MASTER_BOT_TOKENS = [
