@@ -10,32 +10,27 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
     level=logging.WARNING,
 )
-logger = logging.getLogger("MaximumHeartEngine")
+logger = logging.getLogger("AutoDetectEngine")
 
-# Flask वेब सर्वर जो Render और UptimeRobot दोनों के लिए काम करेगा
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Maximum Heart Reaction Bot and Server is Alive and Running!"
+    return "Auto-Detect Reaction Bot Server is Live!"
 
 @app.route('/ping')
 def ping():
-    return "Pong! Bot is active.", 200
+    return "Pong! Active.", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-class MaximumHeartTelegramReactionEngine:
+class ChannelAutoDetector:
     def __init__(self, bot_tokens: List[str], channel_id: Union[int, str]):
         self.bot_tokens = bot_tokens
         self.channel_id = channel_id
-        # पूल में लगभग सभी जगह हार्ट (❤️) ही रखे गए हैं ताकि लगातार 15-20 या उससे ज़्यादा दिल वाले रिएक्शन जाएँ
-        self.emoji_pool = [
-            "❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️",
-            "❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️"
-        ]
+        self.last_processed_id = 0
 
     async def _safe_react(self, token: str, message_id: int, emoji: str) -> bool:
         try:
@@ -50,23 +45,52 @@ class MaximumHeartTelegramReactionEngine:
         except Exception:
             return False
 
-    async def execute_reaction_campaign(self, message_id: int) -> None:
-        if not self.bot_tokens:
-            return
-
+    async def trigger_reactions(self, message_id: int):
         tokens = list(self.bot_tokens)
         random.shuffle(tokens)
         
+        heart_count = random.randint(15, 20)
+        other_emojis = ["👍", "🔥", "😍", "👏", "🎉", "🤩", "🏆", "🍾", "👻", "👀", "🎃", "😎"]
+
+        print(f"New message detected! ID: {message_id}. Sending reactions...")
+
         for index, token in enumerate(tokens):
-            emoji = random.choice(self.emoji_pool)
+            if index < heart_count:
+                emoji = "❤️"
+            else:
+                emoji = random.choice(other_emojis)
+
             await self._safe_react(token, message_id, emoji)
 
             if index == len(tokens) - 1:
                 break
 
-            # स्पीड को धीमा रखा गया है (हर बॉट के बीच 20 से 30 सेकंड का गैप)
-            delay = random.uniform(20.0, 30.0)
+            delay = random.uniform(15.0, 25.0)
             await asyncio.sleep(delay)
+
+    async def start_auto_scanning(self):
+        scanner_token = self.bot_tokens[0]
+        print("Auto-detection scanner is running in background...")
+
+        async with Bot(token=scanner_token) as bot:
+            while True:
+                try:
+                    # चैनल के हालिया मैसेज को ट्रैक करने के लिए फॉरवर्ड या चैट इतिहास की जाँच
+                    # चूंकि टेलीग्राम बॉट API चैनलों के सीधे अपडेट्स नहीं देता, 
+                    # हम यहाँ एक स्मार्ट फॉरवर्ड चेकर विधि का उपयोग कर रहे हैं।
+                    updates = await bot.get_updates(limit=5, timeout=10)
+                    for update in updates:
+                        if update.channel_post:
+                            msg_id = update.channel_post.message_id
+                            if msg_id > self.last_processed_id:
+                                self.last_processed_id = msg_id
+                                asyncio.create_task(self.trigger_reactions(msg_id))
+                    
+                except Exception as e:
+                    # यदि कोई नेटवर्क या एपीआई लिमिट एरर हो तो थोड़ा रुककर फिर कोशिश करेगा
+                    pass
+                
+                await asyncio.sleep(3)
 
 async def main():
     MASTER_BOT_TOKENS = [
@@ -102,17 +126,13 @@ async def main():
     ]
     
     PRIVATE_CHANNEL_ID = -1002982567511
-    TARGET_MESSAGE_ID = 26251
 
-    engine = MaximumHeartTelegramReactionEngine(
+    detector = ChannelAutoDetector(
         bot_tokens=MASTER_BOT_TOKENS,
         channel_id=PRIVATE_CHANNEL_ID
     )
     
-    await engine.execute_reaction_campaign(message_id=TARGET_MESSAGE_ID)
-    
-    while True:
-        await asyncio.sleep(3600)
+    await detector.start_auto_scanning()
 
 if __name__ == "__main__":
     import threading
